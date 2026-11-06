@@ -1,6 +1,7 @@
 package player
 
 import (
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -221,5 +222,34 @@ func TestEndRadio(t *testing.T) {
 	p.refill()
 	if asked != 0 {
 		t.Error("asked the radio after leaving it")
+	}
+}
+
+// A song NetEase failed to say where it streams from stays, with why: the
+// player skipped it as one that cannot play, so a moment of NetEase's
+// -460 skipped the first songs of a queue played, or all of them.
+func TestNoWordDoesNotSkip(t *testing.T) {
+	asked := make(chan int64, 4)
+	songURL = func(id int64, _ string) (*netease.Stream, error) {
+		asked <- id
+		return nil, errors.New("检测到您的网络环境存在风险，请稍后再试")
+	}
+	defer func() { songURL = netease.SongURL }()
+	ch := make(chan func(), 16)
+	p := New(func(fn func()) { ch <- fn })
+	p.PlayQueue([]netease.Track{{ID: 1}, {ID: 2}, {ID: 3}}, 0)
+	for deadline := time.After(2 * time.Second); p.Loading(); {
+		select {
+		case fn := <-ch:
+			fn()
+		case <-deadline:
+			t.Fatal("still loading")
+		}
+	}
+	if id := <-asked; id != 1 || len(asked) != 0 {
+		t.Fatalf("asked for %d, then %d more", id, len(asked))
+	}
+	if p.Current().ID != 1 || p.Playing() || p.Err() == "" {
+		t.Fatalf("at %d, playing %v, err %q", p.Current().ID, p.Playing(), p.Err())
 	}
 }

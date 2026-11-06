@@ -431,13 +431,24 @@ var Levels = []string{"standard", "higher", "exhigh", "lossless", "hires"}
 // Lossless reports whether level streams FLAC.
 func Lossless(level string) bool { return level == "lossless" || level == "hires" }
 
+// songURLPost asks the eapi for where a track streams; tests replace it.
+var songURLPost = eapiPost
+
+// riskWaits are how long SongURL waits before asking again, each time
+// NetEase answers -460, "检测到您的网络环境存在风险": it does so now and
+// then, to a request asked again a moment later.
+var riskWaits = []time.Duration{300 * time.Millisecond, 700 * time.Millisecond, 1500 * time.Millisecond}
+
 // SongURL returns where to stream a track, MP3 or FLAC, at level (one of
 // Levels) or the best below it the listener may play. It goes through
 // the eapi, which carries the session, so VIP songs play for subscribers.
+// ErrUnavailable is for a song NetEase won't stream: any other error is
+// no word on the song.
 func SongURL(id int64, level string) (*Stream, error) {
 	var res struct {
-		Code int `json:"code"`
-		Data []struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    []struct {
 			Stream
 			URL           string          `json:"url"`
 			Peak          *float64        `json:"peak"`
@@ -448,9 +459,22 @@ func SongURL(id int64, level string) (*Stream, error) {
 	if Lossless(level) {
 		encode = "flac"
 	}
-	data := map[string]any{"ids": fmt.Sprintf("[%d]", id), "level": level, "encodeType": encode}
-	if err := eapiPost("/api/song/enhance/player/url/v1", data, &res); err != nil {
-		return nil, err
+	for try := 0; ; try++ {
+		res.Code, res.Message, res.Data = 0, "", nil
+		data := map[string]any{"ids": fmt.Sprintf("[%d]", id), "level": level, "encodeType": encode}
+		if err := songURLPost("/api/song/enhance/player/url/v1", data, &res); err != nil {
+			return nil, err
+		}
+		if res.Code != -460 || try == len(riskWaits) {
+			break
+		}
+		time.Sleep(riskWaits[try])
+	}
+	if res.Code != 200 {
+		if res.Message == "" {
+			res.Message = fmt.Sprintf("网易云音乐出错（%d）", res.Code)
+		}
+		return nil, errors.New(res.Message)
 	}
 	if len(res.Data) == 0 || res.Data[0].URL == "" {
 		return nil, ErrUnavailable

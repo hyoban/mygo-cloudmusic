@@ -1,6 +1,8 @@
 package player
 
 import (
+	"bytes"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -335,5 +337,45 @@ func TestStreamSizeIsNotTrusted(t *testing.T) {
 	dl.mu.Unlock()
 	if n > maxPrealloc {
 		t.Errorf("set aside %d bytes", n)
+	}
+}
+
+// A song whose connection drops goes on from where it was cut off: it
+// ended there, and the next song played, a while into it.
+func TestDownloadResumes(t *testing.T) {
+	waits := resumeWaits
+	resumeWaits = []time.Duration{time.Millisecond}
+	defer func() { resumeWaits = waits }()
+	b := make([]byte, 300<<10)
+	for i := range b {
+		b[i] = byte(i * 7)
+	}
+	var ranges []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ranges = append(ranges, r.Header.Get("Range"))
+		if len(ranges) == 1 {
+			w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+			w.Write(b[:len(b)/3])
+			w.(http.Flusher).Flush()
+			panic(http.ErrAbortHandler)
+		}
+		var from int
+		fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-", &from)
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", from, len(b)-1, len(b)))
+		w.WriteHeader(http.StatusPartialContent)
+		w.Write(b[from:])
+	}))
+	defer srv.Close()
+	dl := startDownload(srv.URL, int64(len(b)), nil, nil)
+	defer dl.Close()
+	if n := dl.waitFor(int64(len(b))); n != int64(len(b)) {
+		t.Fatalf("%d of %d bytes, %v", n, len(b), dl.err)
+	}
+	got := make([]byte, len(b))
+	if _, err := dl.readAt(got, 0); err != nil || !bytes.Equal(got, b) {
+		t.Fatalf("bytes differ, %v", err)
+	}
+	if len(ranges) != 2 || ranges[0] != "" || ranges[1] == "" {
+		t.Fatalf("asked with ranges %q", ranges)
 	}
 }

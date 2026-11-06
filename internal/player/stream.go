@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"math/cmplx"
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo/audio"
 	gomp3 "github.com/hajimehoshi/go-mp3"
@@ -83,6 +85,10 @@ func opened(f *os.File, size int64) *download {
 	return d
 }
 
+// resumeWaits are how long a download cut off waits before asking for the
+// rest, each time: a connection dropped mid-song would end the song there.
+var resumeWaits = []time.Duration{500 * time.Millisecond, time.Second, 2 * time.Second}
+
 func (d *download) run(ctx context.Context, url string) {
 	defer d.release()
 	finish := func(err error) {
@@ -91,29 +97,9 @@ func (d *download) run(ctx context.Context, url string) {
 		d.cond.Broadcast()
 		d.mu.Unlock()
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		finish(err)
-		return
-	}
-	req.Header.Set("User-Agent", netease.UserAgent)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		finish(err)
-		return
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		finish(errors.New(res.Status))
-		return
-	}
-	buf := make([]byte, 64<<10)
-	for {
-		n, err := res.Body.Read(buf)
-		if n > 0 {
-			d.write(buf[:n])
-		}
-		if err == io.EOF {
+	for try := 0; ; try++ {
+		err := d.fetch(ctx, url)
+		if err == nil {
 			// Whole if as long as promised: the cache's.
 			if d.part != "" && (d.size <= 0 || d.n == d.size) {
 				d.hand()
@@ -121,9 +107,81 @@ func (d *download) run(ctx context.Context, url string) {
 			finish(nil)
 			return
 		}
-		if err != nil {
+		var status httpStatus
+		if ctx.Err() != nil || errors.As(err, &status) || try == len(resumeWaits) {
+			// What came in plays, as it did before a song shorter than
+			// promised was asked for again.
+			if err == io.ErrUnexpectedEOF {
+				err = nil
+			}
 			finish(err)
 			return
+		}
+		select {
+		case <-ctx.Done():
+			finish(ctx.Err())
+			return
+		case <-time.After(resumeWaits[try]):
+		}
+	}
+}
+
+// httpStatus is a status a server answered other than the song's bytes,
+// which asking again would not change.
+type httpStatus struct{ status string }
+
+func (e httpStatus) Error() string { return e.status }
+
+// fetch fetches what of url is not in yet, from where it was cut off.
+func (d *download) fetch(ctx context.Context, url string) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return httpStatus{err.Error()}
+	}
+	req.Header.Set("User-Agent", netease.UserAgent)
+	from := d.n
+	if from > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", from))
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	// A server that ignores the range sends it all again: what is in
+	// already is dropped.
+	drop := int64(0)
+	switch {
+	case res.StatusCode == http.StatusOK:
+		drop = from
+	case res.StatusCode == http.StatusPartialContent && from > 0:
+	case res.StatusCode == http.StatusRequestedRangeNotSatisfiable && from > 0:
+		// All in: the size promised was more than the song.
+		return nil
+	default:
+		return httpStatus{res.Status}
+	}
+	buf := make([]byte, 64<<10)
+	for {
+		n, err := res.Body.Read(buf)
+		b := buf[:n]
+		if drop > 0 {
+			k := min(drop, int64(len(b)))
+			b, drop = b[k:], drop-k
+		}
+		if len(b) > 0 {
+			d.write(b)
+		}
+		if err == io.EOF {
+			// Cut off before the end it promised, as a connection that
+			// drops can be.
+			if d.size > 0 && d.n < d.size {
+				return io.ErrUnexpectedEOF
+			}
+			return nil
+		}
+		if err != nil {
+			return err
 		}
 	}
 }

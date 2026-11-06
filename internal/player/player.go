@@ -638,7 +638,11 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 					p.err = "这首歌需要 VIP 才能播放"
 				}
 				// Skip what cannot play, unless nothing in the queue can.
-				if skipped+1 < len(p.order) {
+				// Not what NetEase failed to say whether it can: the
+				// queue would run on to its end in a moment of no
+				// network.
+				var nw noWord
+				if !errors.As(err, &nw) && skipped+1 < len(p.order) {
 					next := at + 1
 					if next >= len(p.order) {
 						next = 0
@@ -682,12 +686,22 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 
 // open opens track t's audio at level: kept in the cache, or else
 // streamed into it, and kept once it has all come in.
+// songURL finds where a track streams; tests replace it.
+var songURL = netease.SongURL
+
+// noWord is an error asking NetEase where a track streams, which says
+// nothing of whether it can play.
+type noWord struct{ error }
+
 func (p *Player) open(t netease.Track, level string) (*netease.Stream, stream, error) {
 	dl, info, ok := p.Cache.lookup(t.ID, level)
 	if !ok {
 		var err error
-		info, err = netease.SongURL(t.ID, level)
+		info, err = songURL(t.ID, level)
 		if err != nil {
+			if err != netease.ErrUnavailable {
+				err = noWord{err}
+			}
 			return nil, nil, err
 		}
 		dl = p.Cache.download(t.ID, info)
