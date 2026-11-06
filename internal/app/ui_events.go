@@ -68,8 +68,11 @@ func (a *app) event(c *ui.Context, e *netease.Event) {
 		case ct.Video:
 			ui.Text(c, "分享了视频，暂不支持在应用内观看").FontSize(12.5).TextColor(p.muted)
 		}
-		ui.Text(c, fmt.Sprintf("%s 赞 · %s 评论 · %s 转发", count(e.Info.LikedCount), count(e.Info.CommentCount), count(e.Info.ShareCount))).
-			FontSize(12).TextColor(p.muted)
+		counts := fmt.Sprintf("%s 赞 · %s 评论 · %s 转发", count(e.Info.LikedCount), count(e.Info.CommentCount), count(e.Info.ShareCount))
+		if !a.settings.Comments {
+			counts = fmt.Sprintf("%s 赞 · %s 转发", count(e.Info.LikedCount), count(e.Info.ShareCount))
+		}
+		ui.Text(c, counts).FontSize(12).TextColor(p.muted)
 	})
 }
 

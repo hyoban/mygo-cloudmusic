@@ -102,7 +102,9 @@ func (a *app) nowPlayingView(c *ui.Context) {
 
 func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color, w, h float32, pointerIn bool) {
 	pl := a.pl
-	a.commentsFor(tr)
+	if a.settings.Comments {
+		a.commentsFor(tr)
+	}
 	// An episode has what it is about and its captions in place of lyrics;
 	// a song, lyrics in place of those.
 	switch program := tr.ProgramID != 0; {
@@ -117,6 +119,11 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 		a.npPane = paneProgram
 	case !program && (a.npPane == paneProgram || a.npPane == paneCaptions):
 		a.npPane = a.lyricsPaneChosen()
+	case a.npPane == paneComments && !a.settings.Comments:
+		a.npPane = paneQueue
+		if !program {
+			a.npPane = a.lyricsPaneChosen()
+		}
 	}
 	if a.npPane != paneQueue {
 		a.queueAt = -1
@@ -294,14 +301,20 @@ type npTab struct {
 // npTabs returns the tabs of Now Playing, in order, for what plays: ⌘1
 // chooses the first, ⌘2 the second, and on.
 func (a *app) npTabs() []npTab {
+	var tabs []npTab
 	if tr := a.pl.Current(); tr != nil && tr.ProgramID != 0 {
-		tabs := []npTab{{paneProgram, "简介"}}
+		tabs = []npTab{{paneProgram, "简介"}}
 		if a.captionsShown() {
 			tabs = append(tabs, npTab{paneCaptions, "字幕"})
 		}
-		return append(tabs, npTab{paneQueue, "待播清单"}, npTab{paneComments, "评论"})
+		tabs = append(tabs, npTab{paneQueue, "待播清单"})
+	} else {
+		tabs = []npTab{{paneLyrics, "歌词"}, {paneStage, "律动"}, {paneQueue, "待播清单"}, {paneWall, "选歌"}}
 	}
-	return []npTab{{paneLyrics, "歌词"}, {paneStage, "律动"}, {paneQueue, "待播清单"}, {paneWall, "选歌"}, {paneComments, "评论"}}
+	if a.settings.Comments {
+		tabs = append(tabs, npTab{paneComments, "评论"})
+	}
+	return tabs
 }
 
 func (a *app) paneTabs(c *ui.Context) {

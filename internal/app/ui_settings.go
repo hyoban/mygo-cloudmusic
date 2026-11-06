@@ -141,11 +141,18 @@ func (a *app) settingsView(c *ui.Context) {
 					a.changed()
 				}
 			})
-			row("间奏时显示热评", "前奏、间奏与尾奏时，歌词处换成这首歌的热门评论", func() {
-				if ui.Switch(c.Key("hot-comments"), &s.HotComments).Label("间奏时显示热评").Changed() {
+			row("评论", "关闭后不再显示和加载评论：播放页的评论、间奏热评与动态的评论数", func() {
+				if ui.Switch(c.Key("comments"), &s.Comments).Label("评论").Changed() {
 					a.changed()
 				}
 			})
+			if s.Comments {
+				row("间奏时显示热评", "前奏、间奏与尾奏时，歌词处换成这首歌的热门评论", func() {
+					if ui.Switch(c.Key("hot-comments"), &s.HotComments).Label("间奏时显示热评").Changed() {
+						a.changed()
+					}
+				})
+			}
 			row("音量均衡", "按网易云音乐测得的响度调整每首歌的音量，让歌曲听起来一样响", func() {
 				if ui.Switch(c.Key("normalize"), &s.Normalize).Label("音量均衡").Changed() {
 					a.pl.SetVolume(a.volume)

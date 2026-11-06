@@ -111,3 +111,35 @@ func TestLikeComment(t *testing.T) {
 		}
 	}
 }
+
+// With comments turned off Now Playing asks NetEase for none, leaves the
+// comments' pane it was left on for the lyrics, and ⌘5 chooses nothing.
+func TestCommentsOff(t *testing.T) {
+	asked := make(chan string, 4)
+	threadComments = func(thread string, offset, limit int) (*netease.Comments, error) {
+		asked <- thread
+		return &netease.Comments{}, nil
+	}
+	defer func() { threadComments = netease.ThreadComments }()
+	a := newTestApp()
+	a.settings = defaultSettings()
+	a.settings.Comments = false
+	a.pl.Cue([]netease.Track{{ID: 13, Name: "春日影", Duration: 240000}})
+	a.pl.SetLyrics(nil)
+	a.nowPlaying, a.npPane = true, paneComments
+	tt := ui.NewTester(a.view, 1200, 800)
+	tt.Frame()
+	if a.npPane != paneLyrics {
+		t.Fatalf("pane %d shows, not the lyrics", a.npPane)
+	}
+	tt.Key(ui.Cmd, ui.Key5)
+	tt.Frame()
+	if a.npPane == paneComments {
+		t.Fatal("⌘5 chose the comments")
+	}
+	select {
+	case thread := <-asked:
+		t.Fatalf("asked for the comments of %s", thread)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
