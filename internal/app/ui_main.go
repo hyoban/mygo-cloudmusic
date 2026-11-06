@@ -451,7 +451,7 @@ func (a *app) loadPlaylist(id int64, thenPlay bool) {
 	a.loadingPl[id] = true
 	delete(a.plErr, id)
 	go func() {
-		pl, err := netease.PlaylistDetail(id)
+		pl, err := playlistDetail(id)
 		a.post(func() {
 			delete(a.loadingPl, id)
 			if err != nil {

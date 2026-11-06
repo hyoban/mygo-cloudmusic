@@ -55,6 +55,9 @@ func (a *app) setMenu() {
 			{Role: mygo.RolePaste, Label: "粘贴"},
 			{Role: mygo.RoleSelectAll, Label: "全选"},
 		}},
+		{Label: "显示", Submenu: []*mygo.MenuItem{
+			{Label: "刷新", Accelerator: "CmdOrCtrl+R", Click: run(a.refresh)},
+		}},
 		{Label: "控制", Submenu: []*mygo.MenuItem{
 			{Label: "播放/暂停", Click: run(func() { a.pl.TogglePlay() })},
 			{Label: "下一首", Accelerator: "CmdOrCtrl+Right", Click: run(func() { a.pl.Next() })},

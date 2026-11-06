@@ -73,7 +73,8 @@ type app struct {
 	charts      []netease.Playlist
 	homeErr     string
 	homeLoading bool
-	homeAt      time.Time // when what the home page shows was asked for
+	homeAt      time.Time      // when what the home page shows was asked for
+	refreshing  map[route]bool // the pages loading anew, as ⌘R asked
 
 	playlists  map[int64]*netease.Playlist
 	loadingPl  map[int64]bool
