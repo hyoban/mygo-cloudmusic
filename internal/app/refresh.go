@@ -21,6 +21,9 @@ func (a *app) refresh() {
 	r := a.route
 	switch r.page {
 	case pageHome, pageDaily, pageCharts:
+		if r.page == pageDaily {
+			a.loadPastDates(true)
+		}
 		if a.homeLoading {
 			return
 		}

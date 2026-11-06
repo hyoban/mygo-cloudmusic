@@ -278,3 +278,25 @@ func TestProgramCommentsLive(t *testing.T) {
 		t.Errorf("no answer of %d: %v", ids[1], liked)
 	}
 }
+
+func TestDailyHistoryLive(t *testing.T) {
+	// A subscriber may look back on the daily songs of their last days.
+	// NM_SESSION must be a subscriber's.
+	path := os.Getenv("NM_SESSION")
+	if os.Getenv("LIVE") == "" || path == "" {
+		t.Skip()
+	}
+	useSession(t, path)
+	dates, err := DailyHistory()
+	if err != nil || len(dates) == 0 {
+		t.Fatalf("%v, %v", dates, err)
+	}
+	songs, err := DailySongsOn(dates[0])
+	if err != nil || len(songs) == 0 {
+		t.Fatalf("%d songs on %s, %v", len(songs), dates[0], err)
+	}
+	if songs[0].Name == "" || songs[0].Privilege == nil {
+		t.Fatalf("first song %+v", songs[0])
+	}
+	t.Logf("%v; %s: %d songs, %q", dates, dates[0], len(songs), songs[0].Name)
+}

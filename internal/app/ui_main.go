@@ -121,6 +121,8 @@ func (a *app) load(r route) {
 	switch r.page {
 	case pageHome:
 		a.freshenHome()
+	case pageDaily:
+		a.loadPastDates()
 	case pagePlaylist:
 		a.loadPlaylist(r.id, false)
 	case pageSearch:

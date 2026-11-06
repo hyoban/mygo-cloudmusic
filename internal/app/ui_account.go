@@ -59,6 +59,7 @@ func (a *app) signedIn(prof *netease.Profile) {
 	a.artists, a.albums, a.users, a.podcasts = map[int64]*artistData{}, map[int64]*albumData{}, map[int64]*userData{}, map[int64]*podcastData{}
 	a.podcastTab = &podcastTab{}
 	a.searches = map[route]*searchData{}
+	a.pastDaily = nil
 	a.load(a.route)
 	a.loadHome()
 	if prof == nil {

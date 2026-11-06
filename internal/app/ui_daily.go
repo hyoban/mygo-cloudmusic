@@ -12,12 +12,12 @@ import (
 	"netease-music-mygo/internal/player"
 )
 
-// dailyArt is the cover of the day's songs: their first cover, blurred,
+// dailyArt is the cover of a day's songs: their first cover, blurred,
 // with the date set large over it.
-func (a *app) dailyArt(c *ui.Context, now time.Time, size float32) {
+func (a *app) dailyArt(c *ui.Context, now time.Time, songs []netease.Track, size float32) {
 	var art *artwork
-	if len(a.daily) > 0 {
-		art = a.art.get(netease.Sized(a.daily[0].Album.PicURL, 600), true)
+	if len(songs) > 0 {
+		art = a.art.get(netease.Sized(songs[0].Album.PicURL, 600), true)
 	}
 	radius := size * 0.07
 	box := ui.Box(c).Size(size, size).Radius(radius).Background(ui.Hex("#3a3a40")).
@@ -472,21 +472,25 @@ func (a *app) dailyBlurb() string {
 }
 
 func (a *app) dailyPage(c *ui.Context) {
-	loading := len(a.daily) == 0
-	if loading && !a.homeLoading {
+	if len(a.daily) == 0 && !a.homeLoading {
 		a.centered(c, "暂时没有推荐", a.loadHome)
 		return
 	}
-	now := c.Now()
-	songs := a.daily
+	day, past := a.shownDay(c.Now())
+	songs, loading, blurb := a.daily, len(a.daily) == 0, a.dailyBlurb()
+	if past != nil {
+		songs, loading = past.songs, past.loading
+		blurb = fmt.Sprintf("%d月%d日的每日推荐", day.Month(), day.Day())
+	}
 	s := a.pageShimmer(c)
 	header := func(c *ui.Context) {
 		p := a.pal
 		ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 26, 0).Children(func() {
-			a.dailyArt(c, now, 212)
+			a.dailyArt(c, day, songs, 212)
 			ui.Column(c).Gap(8).Children(func() {
 				ui.Text(c, "每日推荐").FontSize(12).FontWeight(600).TextColor(p.accent)
 				ui.Text(c, "每日歌曲推荐").FontSize(30).FontWeight(800).LetterSpacing(-0.6)
+				defer a.pastDays(c)
 				if loading {
 					s.text(c, 13, 1.3).Width(240)
 					ui.Row(c).Gap(10).Margin(8, 0, 0, 0).Children(func() {
@@ -495,7 +499,7 @@ func (a *app) dailyPage(c *ui.Context) {
 					})
 					return
 				}
-				ui.Text(c, fmt.Sprintf("%d 首 · %s", len(songs), a.dailyBlurb())).FontSize(13).TextColor(p.muted)
+				ui.Text(c, fmt.Sprintf("%d 首 · %s", len(songs), blurb)).FontSize(13).TextColor(p.muted)
 				ui.Row(c).Gap(10).Margin(8, 0, 0, 0).Children(func() {
 					if pillButton(c.Key("play"), iconPlay, "播放全部", p.accent, p.onAccent).Clicked() {
 						if a.pl.Shuffle() {
@@ -515,6 +519,18 @@ func (a *app) dailyPage(c *ui.Context) {
 	}
 	if loading {
 		a.trackSkeleton(c, s, true, header)
+		return
+	}
+	if past != nil && past.err != "" {
+		date := a.past().dates[a.past().day-1]
+		a.trackRows(c, nil, true, header, func(c *ui.Context) {
+			ui.Column(c).Padding(40, 0).Center().Gap(12).Children(func() {
+				ui.Text(c, past.err).TextColor(a.pal.muted).FontSize(13)
+				if ui.Button(c, "重试").Clicked() {
+					a.loadPastDay(date)
+				}
+			})
+		})
 		return
 	}
 	a.trackRows(c, songs, true, header)

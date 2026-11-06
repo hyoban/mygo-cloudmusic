@@ -74,6 +74,7 @@ type app struct {
 	homeErr     string
 	homeLoading bool
 	homeAt      time.Time      // when what the home page shows was asked for
+	pastDaily   *pastDaily     // the daily songs past, see past
 	refreshing  map[route]bool // the pages loading anew, as ⌘R asked
 
 	playlists  map[int64]*netease.Playlist

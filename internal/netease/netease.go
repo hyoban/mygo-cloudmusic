@@ -232,6 +232,29 @@ func DailySongs() ([]Track, error) {
 	return songs, nil
 }
 
+// DailyHistory returns the days of daily songs past the listener may look
+// back on, the latest first, as "2006-01-02": a subscriber's last five.
+func DailyHistory() ([]string, error) {
+	var res struct {
+		Data struct {
+			Dates []string `json:"dates"`
+		} `json:"data"`
+	}
+	err := get("/api/discovery/recommend/songs/history/recent", nil, &res)
+	return res.Data.Dates, err
+}
+
+// DailySongsOn returns the daily songs of a day DailyHistory gave.
+func DailySongsOn(date string) ([]Track, error) {
+	var res struct {
+		Data struct {
+			Songs []Track `json:"songs"`
+		} `json:"data"`
+	}
+	err := get("/api/discovery/recommend/songs/history/detail", url.Values{"date": {date}}, &res)
+	return res.Data.Songs, err
+}
+
 // detailPrivileges gives songs the privileges their details carry for the
 // listener, which are right where other lists have none, or wrong ones.
 func detailPrivileges(songs []Track) {
